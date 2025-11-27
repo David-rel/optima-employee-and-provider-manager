@@ -1,65 +1,67 @@
-import Image from "next/image";
+import { requireAuth } from "@/lib/with-auth";
+import { query } from "@/lib/db";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+export default async function Dashboard() {
+  const session = await requireAuth();
+
+  // Fetch and console log all users
+  try {
+    const usersResult = await query(
+      "SELECT id, name, email, email_verified, role, created_at, updated_at FROM users ORDER BY created_at DESC"
+    );
+    console.log("=== ALL USERS ===");
+    console.log(JSON.stringify(usersResult.rows, null, 2));
+    console.log("=================");
+
+    // Check email verification status from database using user ID directly
+    let currentUser: { email_verified: boolean } | null = null;
+    if (session.user?.id) {
+      const userResult = await query<{ email_verified: boolean }>(
+        "SELECT email_verified FROM users WHERE id = $1",
+        [parseInt(session.user.id)]
+      );
+      currentUser = userResult.rows[0] || null;
+    }
+
+    console.log("Current user from DB (by ID):", currentUser);
+    console.log("Session user ID:", session.user?.id);
+    console.log("Session email:", session.user?.email);
+    console.log("Session emailVerified:", session.user?.emailVerified);
+    console.log("DB email_verified:", currentUser?.email_verified);
+
+    // Server-side redirect if email not verified (trust database, not session)
+    // Only redirect if explicitly false - if true or undefined, allow access
+    if (currentUser && currentUser.email_verified === false) {
+      console.log("Redirecting to verify-email (email not verified in DB)");
+      redirect("/verify-email");
+    }
+    // If email_verified is true or undefined/null, allow access
+    // This ensures that once verified in DB, user can access even if session hasn't refreshed
+  } catch (error) {
+    console.error("Error fetching users:", error);
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6">
+        <h1 className="text-3xl font-bold text-[#003366] mb-4">
+          Welcome, {session.user?.name || session.user?.email}!
+        </h1>
+        <p className="text-slate-600 mb-2">
+          <span className="font-semibold">Email:</span> {session.user?.email}
+        </p>
+        {session.user?.role && (
+          <p className="text-slate-600 mb-2">
+            <span className="font-semibold">Role:</span>{" "}
+            <span className="capitalize">{session.user.role}</span>
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        )}
+        <p className="text-sm text-slate-500 mt-4">
+          This is your protected dashboard. All routes are protected and require
+          authentication and email verification.
+        </p>
+      </div>
     </div>
   );
 }
